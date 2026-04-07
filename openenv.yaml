@@ -1,0 +1,17 @@
+spec_version: 1
+name: data_clean_env
+type: space
+runtime: fastapi
+app: server.app:app
+port: 8000
+
+tasks:
+  - name: fix_missing_values
+    description: "Fix missing values in an employee dataset. ~30% of cells are missing."
+    difficulty: easy
+  - name: dedup_and_normalize
+    description: "Clean a customer dataset with duplicates, inconsistent dates, phones, and casing."
+    difficulty: medium
+  - name: full_pipeline
+    description: "Complete data cleaning pipeline: missing values, duplicates, invalid values, inconsistent formats."
+    difficulty: hard
