@@ -167,13 +167,19 @@ uv sync
 uvicorn server.app:app --reload
 ```
 
-## Automated Test Coverage
+## Use Cases
 
-Our `tests/` folder explicitly covers every major environment feature, scoring boundary logic, and generative scenario before space validation. We test these workflows manually in the Playground, and systematically via our CLI utilizing `uv run pytest tests/`.
+The Data Clean Env environment is ideal for:
 
-**What we have explicitly tested and confirmed in our environment (`test_new_features.py`):**
-1. `test_ml_impact_data_generation`: Validates procedural sequence generator for the `ml_impact` task datasets so that deterministic algorithms properly inject scaling anomaly errors across seeds.
-2. `test_declare_contract`: Emulates the `step/reset` cycles sequentially validating that executing the `declare_contract` command successfully evaluates downstream rewards bounds conditionally. 
-3. `test_ml_impact_grader_baseline`: Ensures uncleaned random datasets fed back into the `grade_ml_impact` thresholding yield an exact 0.0 baseline boundary properly avoiding arbitrary exploits.
-4. `test_ml_impact_grader_perfect`: Injects pristine target data back against the inference predictor verifying F1 lift scores hit the target 1.0 constraint.
-5. `test_semantic_issues_detected`: Simulates `2050` time errors and unit-type inaccuracies within the raw rows to ensure instances are trapped and properly communicated through the `_detect_issues()` parser.
+- **LLM Evaluation:** Benchmark agent reasoning capabilities directly against downstream evaluation sets rather than strict formatting adherence.
+- **Agent Training:** Train RL agents computationally to deduce data schemas via the `declare_contract` task with explicitly rewarded constraints.
+- **Curriculum Learning:** Mix datasets incrementally (e.g. `fix_missing_values` to `full_pipeline`) modeling escalating dataset distortion boundaries. 
+- **Research:** Reproducible environments with isolated seed control simulating randomized data distributions natively enabling scientific experiments.
+- **Educational:** Learn scalable fundamentals for automated Python data cleansing and programmatic boundary testing systematically.
+
+## Learn More
+
+- [Scikit-learn Documentation](https://scikit-learn.org/stable/)
+- [OpenEnv Documentation](https://github.com/Mg0718/openenv)
+- [OpenEnv Environment Design](https://github.com/Mg0718/openenv#readme)
+
