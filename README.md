@@ -140,6 +140,30 @@ cd data_clean_env
 openenv push --repo-id your-username/data-clean-env
 ```
 
+## How to Test Manually in the Hugging Face Space (Playground)
+
+When interacting with the Hugging Face space using the Graido Playground UI, **you must initialize the dataset first.** 
+If you click `Step` before initializing, you will receive an `"Error executing: list index out of range"` because the environment data is totally empty!
+
+1. **Step 1:** Click the **Reset** button first. 
+   - *Optional:* You can type `{"task_name": "ml_impact"}` in the `Params` box before clicking Reset to load a specific task!
+2. **Step 2:** Now you can execute commands like `inspect` or `fill_missing`.
+   - Examples of `Command`: `inspect` (no params)
+   - Example 2 `Command`: `fill_missing`, `Params`: `{"column": "age", "strategy": "mean"}`
+3. **Step 3:** Click **Step** to execute the action on the dataset.
+
+## Automated Test Coverage
+
+Our `tests/` folder covers every major environment update to ensure reliability before spaces evaluation.
+You can run tests locally utilizing `uv run pytest tests/`.
+
+**Tests included:**
+- `test_ml_impact_data_generation`: Validates procedural logic for `ml_impact` tasks using fixed random seeds. 
+- `test_declare_contract`: Emulates step/reset cycles dynamically using the environment to execute data contract declarations and reward boosting constraints.
+- `test_ml_impact_grader_baseline`: Ensures uncleaned random noise datasets yield a perfect 0.0 threshold to avoid exploits.
+- `test_ml_impact_grader_perfect`: Feeds Golden verification sets into scikit-learn models natively and asserts > 0 F1 lift score.
+- `test_semantic_issues_detected`: Generates simulated future dates (`2050`) and numeric mismatches natively verifying `_detect_issues()` traps them systematically.
+
 ## Baseline Scores
 
 | Task | Baseline Score | Model |
