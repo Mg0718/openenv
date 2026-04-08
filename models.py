@@ -33,6 +33,7 @@ class DataCleanAction(Action):
         - fix_invalid: Fix invalid entries (params: {"column": "col", "rule": "positive|range|not_future_date", "min": ..., "max": ...})
         - drop_rows: Drop rows by condition (params: {"column": "col", "condition": "is_null|equals|contains", "value": ...})
         - replace_value: Replace values (params: {"column": "col", "old": ..., "new": ...})
+        - declare_contract: Declare a data schema constraint explicitly (params: {"column": "col", "rule": "unique|positive|non_null"})
         - submit: Submit cleaned dataset for grading (no params needed)
     """
 

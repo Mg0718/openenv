@@ -10,7 +10,47 @@ Generates dirty datasets and their golden (clean) references for 3 tasks:
 import json
 import copy
 import random
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
+
+# ─────────────────────────────────────────────────────────────────────
+# DatasetCorruptor (procedural errors)
+# ─────────────────────────────────────────────────────────────────────
+class DatasetCorruptor:
+    """Procedurally inject errors into a clean dataset."""
+    ERROR_TYPES = ["missing", "duplicate", "wrong_date_fmt", "wrong_casing", "invalid_numeric"]
+    
+    def corrupt(self, golden: List[Dict[str, Any]], seed: int, error_rate: float = 0.3) -> List[Dict[str, Any]]:
+        rng = random.Random(seed)
+        dirty = []
+        for row in golden:
+            dirty.append(copy.deepcopy(row))
+            # Duplication error chance
+            if rng.random() < error_rate * 0.1:
+                dirty.append(copy.deepcopy(row))
+        
+        for idx, row in enumerate(dirty):
+            for col, val in row.items():
+                if col == "id" or val is None:
+                    continue
+                if rng.random() < error_rate:
+                    err = rng.choice(self.ERROR_TYPES)
+                    self._apply_error(row, col, err, rng)
+        return dirty
+        
+    def _apply_error(self, row: Dict[str, Any], col: str, err: str, rng: random.Random):
+        val = row[col]
+        if err == "missing":
+            row[col] = None
+        elif err == "wrong_date_fmt" and isinstance(val, str) and "-" in val:
+            # simple swap for date format (assume ISO YYYY-MM-DD -> DD/MM/YYYY)
+            parts = str(val).split("-")
+            if len(parts) == 3:
+                row[col] = f"{parts[2]}/{parts[1]}/{parts[0]}"
+        elif err == "wrong_casing" and isinstance(val, str):
+            row[col] = val.lower() if val.istitle() else val.upper()
+        elif err == "invalid_numeric" and isinstance(val, (int, float)):
+            row[col] = -abs(val) if val > 0 else 0
+
 
 # ─────────────────────────────────────────────────────────────────────
 # TASK 1: EASY — Fix Missing Values
@@ -246,8 +286,46 @@ def _make_hard_dirty() -> List[Dict[str, Any]]:
     for idx, bad_status in status_messes.items():
         dirty[idx]["status"] = bad_status
 
+    # 7. Semantic / Contextual errors
+    dirty[1]["price"] = 1299.0          # Magnitude outlier (cents vs dollars)
+    dirty[3]["weight_kg"] = 1200.0      # Unit inconsistency (grams instead of kg)
+    dirty[5]["launch_date"] = "2050-01-01" # Future launch date
+    dirty[7]["rating"] = 4.6
+    dirty[7]["review_count"] = 0        # Contradiction: positive rating but 0 reviews
+
     return dirty
 
+
+# ─────────────────────────────────────────────────────────────────────
+# TASK 4: ML IMPACT — Downstream Reward
+# ─────────────────────────────────────────────────────────────────────
+
+def _generate_ml_data(n: int, seed: int) -> List[Dict[str, Any]]:
+    rng = random.Random(seed)
+    data = []
+    for i in range(1, n + 1):
+        age = rng.uniform(20, 70)
+        salary = rng.uniform(30000, 120000)
+        balance = rng.uniform(0, 200000)
+        credit_score = rng.uniform(300, 850)
+        score = (age/70)*0.2 + (salary/120000)*0.3 + (credit_score/850)*0.2 + (balance/200000)*0.3
+        target = 1 if score > 0.52 + rng.uniform(-0.1, 0.1) else 0
+        data.append({
+            "id": i,
+            "age": int(age),
+            "salary": int(salary),
+            "credit_score": int(credit_score),
+            "balance": round(balance, 2),
+            "purchased": target
+        })
+    return data
+
+ML_IMPACT_GOLDEN = _generate_ml_data(100, seed=123)
+ML_IMPACT_TEST_DATA = _generate_ml_data(50, seed=456)
+
+def _make_ml_impact_dirty(seed: int) -> List[Dict[str, Any]]:
+    corruptor = DatasetCorruptor()
+    return corruptor.corrupt(ML_IMPACT_GOLDEN, seed=seed, error_rate=0.2)
 
 # ─────────────────────────────────────────────────────────────────────
 # Public API
@@ -272,22 +350,34 @@ TASKS = {
         "dirty_data": None,
         "golden_data": None,
     },
+    "ml_impact": {
+        "description": "Clean customer financial dataset to improve downstream ML classification. Remove NaN, outliers, negative salaries.",
+        "difficulty": "hard",
+        "dirty_data": None,
+        "golden_data": None,
+    },
 }
 
 
-def get_task_data(task_name: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def get_task_data(task_name: str, seed: Optional[int] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Get dirty and golden data for a task.
 
     Returns:
         (dirty_data, golden_data) tuple
     """
+    # Use procedural generation if seed is provided
+    # Keep legacy hardcoded tasks for now but allow ML_impact with seed
+    seed = seed or 42
+    
     if task_name == "fix_missing_values":
         return _make_easy_dirty(), copy.deepcopy(EASY_GOLDEN)
     elif task_name == "dedup_and_normalize":
         return _make_medium_dirty(), copy.deepcopy(MEDIUM_GOLDEN)
     elif task_name == "full_pipeline":
         return _make_hard_dirty(), copy.deepcopy(HARD_GOLDEN)
+    elif task_name == "ml_impact":
+        return _make_ml_impact_dirty(seed=seed), copy.deepcopy(ML_IMPACT_GOLDEN)
     else:
         raise ValueError(f"Unknown task: {task_name}. Available: {list(TASKS.keys())}")
 

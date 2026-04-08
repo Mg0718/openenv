@@ -331,6 +331,88 @@ def grade_hard(cleaned_data: List[Dict[str, Any]], golden_data: List[Dict[str, A
     return round(min(1.0, score), 2)
 
 
+def grade_ml_impact(cleaned_data: List[Dict[str, Any]], golden_data: List[Dict[str, Any]]) -> float:
+    """
+    Grade the ML Impact task: F1 improvement on downstream LogisticRegression model.
+    """
+    if not cleaned_data:
+        return 0.0
+
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import f1_score
+    import math
+
+    # Provide ML_IMPACT_TEST_DATA dependency robustly
+    try:
+        from data.tasks import ML_IMPACT_TEST_DATA
+    except ImportError:
+        try:
+            from ..data.tasks import ML_IMPACT_TEST_DATA
+        except ImportError:
+            import sys
+            import os
+            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+            from data.tasks import ML_IMPACT_TEST_DATA
+
+    def encode_rows(data: List[Dict[str, Any]]):
+        X, y = [], []
+        columns = ["age", "salary", "credit_score", "balance"]
+        for row in data:
+            features = []
+            for col in columns:
+                v = row.get(col)
+                if v is None:
+                    features.append(0.0) 
+                else:
+                    try:
+                        fv = float(v)
+                        if math.isnan(fv):
+                            features.append(0.0)
+                        else:
+                            features.append(fv)
+                    except (ValueError, TypeError):
+                        features.append(0.0)
+            
+            target = row.get("purchased")
+            if target is None:
+                target = 0
+            else:
+                try:
+                    target = int(float(target))
+                except (ValueError, TypeError):
+                    target = 0
+                    
+            X.append(features)
+            y.append(target)
+        return X, y
+
+    X_train, y_train = encode_rows(cleaned_data)
+    X_test, y_test = encode_rows(ML_IMPACT_TEST_DATA)
+
+    if len(set(y_train)) < 2 or not X_train:
+        return 0.0
+
+    import warnings
+    from sklearn.exceptions import ConvergenceWarning
+
+    clf = LogisticRegression(max_iter=500, random_state=42)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            clf.fit(X_train, y_train)
+        preds = clf.predict(X_test)
+        f1 = f1_score(y_test, preds, average='macro')
+    except Exception:
+        return 0.0
+
+    DIRTY_BASELINE_F1 = 0.45
+    if f1 <= DIRTY_BASELINE_F1:
+        return 0.0
+    
+    score = (f1 - DIRTY_BASELINE_F1) / (1.0 - DIRTY_BASELINE_F1)
+    return round(min(1.0, max(0.0, score)), 2)
+
+
 def grade_task(task_name: str, cleaned_data: List[Dict[str, Any]], 
                golden_data: List[Dict[str, Any]]) -> float:
     """
@@ -348,6 +430,7 @@ def grade_task(task_name: str, cleaned_data: List[Dict[str, Any]],
         "fix_missing_values": grade_easy,
         "dedup_and_normalize": grade_medium,
         "full_pipeline": grade_hard,
+        "ml_impact": grade_ml_impact,
     }
     
     if task_name not in graders:

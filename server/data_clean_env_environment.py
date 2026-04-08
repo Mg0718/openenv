@@ -74,6 +74,7 @@ class DataCleanEnvironment(Environment):
         self._max_steps: int = 30
         self._submitted: bool = False
         self._last_score: float = 0.0
+        self._contracts: List[Dict[str, str]] = []
 
     def _detect_issues(self, data: List[Dict[str, Any]]) -> List[str]:
         """Detect data quality issues in the current working dataset."""
@@ -163,6 +164,42 @@ class DataCleanEnvironment(Environment):
             if len(values) > len(lower_values):
                 issues.append(f"Inconsistent casing in '{col}': {len(values)} variants for {len(lower_values)} unique values")
 
+        # Check for semantic / contextual errors
+        semantic_issues = 0
+        for row in data:
+            # 1. Salary magnitude outlier (e.g. 75 instead of 75000)
+            salary = row.get("salary")
+            if salary is not None and isinstance(salary, (int, float)) and 0 < salary < 1000:
+                semantic_issues += 1
+            
+            # 2. Future launch date
+            launch = row.get("launch_date")
+            if launch is not None and isinstance(launch, str):
+                try:
+                    parts = launch.split("-")
+                    if len(parts) == 3 and int(parts[0]) > 2025:
+                        semantic_issues += 1
+                except ValueError:
+                    pass
+            
+            # 3. Unit inconsistency: weight_kg but value is suspiciously large
+            weight = row.get("weight_kg")
+            if weight is not None and isinstance(weight, (int, float)) and weight > 100.0:
+                semantic_issues += 1
+
+            # 4. Cross-column constraint: rating high but review_count = 0
+            rating = row.get("rating")
+            rc = row.get("review_count")
+            if rating is not None and rc is not None:
+                try:
+                    if float(rating) > 3.0 and float(rc) == 0:
+                        semantic_issues += 1
+                except (ValueError, TypeError):
+                    pass
+
+        if semantic_issues > 0:
+            issues.append(f"Semantic/Contextual violations detected: {semantic_issues} rows")
+
         return issues
 
     def _get_summary(self, data: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -232,6 +269,7 @@ class DataCleanEnvironment(Environment):
         self._reset_count += 1
         self._submitted = False
         self._last_score = 0.0
+        self._contracts = []
 
         # Default task from env var or use first task
         task_name = task_name or kwargs.get("task_name") or os.environ.get("DATA_CLEAN_TASK", "fix_missing_values")
@@ -245,7 +283,7 @@ class DataCleanEnvironment(Environment):
             )
 
         self._current_task = task_name
-        self._dirty_data, self._golden_data = get_task_data(task_name)
+        self._dirty_data, self._golden_data = get_task_data(task_name, seed=seed)
         self._working_data = copy.deepcopy(self._dirty_data)
 
         issues = self._detect_issues(self._working_data)
@@ -315,10 +353,12 @@ class DataCleanEnvironment(Environment):
                 result = self._handle_drop_rows(params)
             elif command == "replace_value":
                 result = self._handle_replace_value(params)
+            elif command == "declare_contract":
+                result = self._handle_declare_contract(params)
             elif command == "submit":
                 result = self._handle_submit()
             else:
-                result = f"Unknown command: '{command}'. Available: inspect, view_rows, fill_missing, drop_duplicates, standardize, fix_invalid, drop_rows, replace_value, submit"
+                result = f"Unknown command: '{command}'. Available: inspect, view_rows, fill_missing, drop_duplicates, standardize, fix_invalid, drop_rows, replace_value, declare_contract, submit"
         except Exception as e:
             result = f"Error executing '{command}': {str(e)}"
 
@@ -602,12 +642,57 @@ class DataCleanEnvironment(Environment):
 
         return f"Replaced {replaced} occurrences of '{old}' with '{new}' in '{column}'"
 
+    def _handle_declare_contract(self, params: Dict) -> str:
+        """Declare a schema constraint check."""
+        column = params.get("column")
+        rule = params.get("rule")
+        if not column or not rule:
+            return "Error: 'column' and 'rule' parameters required"
+        self._contracts.append({"column": column, "rule": rule})
+        return f"Declared contract: {column} must be {rule}"
+
+    def _check_contracts_satisfied(self) -> bool:
+        """Check if all declared contracts are satisfied by the current dataset."""
+        if not self._contracts or not self._working_data:
+            return False
+            
+        columns = self._working_data[0].keys()
+        for contract in self._contracts:
+            col = contract["column"]
+            rule = contract["rule"]
+            if col not in columns:
+                return False
+                
+            if rule == "unique":
+                seen = set()
+                for r in self._working_data:
+                    v = r.get(col)
+                    if v in seen: return False
+                    seen.add(v)
+            elif rule == "non_null":
+                if any(r.get(col) is None for r in self._working_data):
+                    return False
+            elif rule == "positive":
+                for r in self._working_data:
+                    v = r.get(col)
+                    if v is not None:
+                        try:
+                            if float(v) <= 0: return False
+                        except (ValueError, TypeError):
+                            return False
+        return True
+
     def _handle_submit(self) -> DataCleanObservation:
         """Submit the cleaned dataset for grading."""
         self._submitted = True
 
         # Grade the submission
         final_score = grade_task(self._current_task, self._working_data, self._golden_data)
+        
+        # Apply contract bonus if declared and correctly enforced
+        if self._contracts and self._check_contracts_satisfied():
+            final_score = min(1.0, final_score + 0.1)
+
         self._last_score = final_score
 
         return DataCleanObservation(

@@ -63,7 +63,7 @@ MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 BENCHMARK = os.getenv("DATA_CLEAN_ENV_BENCHMARK", "data_clean_env")
 MAX_STEPS = 15
 
-TASKS = ["fix_missing_values", "dedup_and_normalize", "full_pipeline"]
+TASKS = ["fix_missing_values", "dedup_and_normalize", "full_pipeline", "ml_impact"]
 
 SYSTEM_PROMPT = textwrap.dedent("""\
 You are a data cleaning agent. You are given a messy dataset and must clean it by issuing commands.
